@@ -1,6 +1,7 @@
-/** Author: ...
+/** Author: Henning P. Tandberg
  *  File:   dimled.ino
- *  Group:  AUX - IN5120
+ *  
+ *  Code for group AUX - IN5120 - Spring 2019.
  */
 
 #include <Adafruit_NeoPixel.h>
@@ -83,6 +84,7 @@ void dimGradient() {
 
 
 /** incGradient() - Gradually increments the leds of the strip one by one.
+ *  @acceleration:  Acceleration of dim
  */
 void incGradient(double acceleration) {
 #if (DEBUG == 1)
