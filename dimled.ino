@@ -10,12 +10,27 @@
   #include <avr/power.h>
 #endif
 
-/** Debug flag */
-#define DEBUG       1       // Set to 0 in production
+/** For debugging */
+#define DEBUG       1       // Set to 0 in poduction
+#define DEBUGPRINT(s)           \
+    do {                        \
+        if (DEBUG) {            \
+            Serial.println s ;  \
+        }                       \
+    } while(0)
+
+/** Enable code */
+#define PILLOW_ENABLED      1
+#define MOTOR_ENABLED       1
+#define BUBBLES_ENABLED     1
+#define TENTACLES_ENABLED   1
+#define TOPLIGHT_ENABLED    1
 
 /** Arduino pins */
-#define LED_PIN     6       // Control pin for led strip?
+#define LED_PIN     6       // Control pin for led strip
 #define MIC_PIN     A0      // Sample pin for microphone
+#define PILLOW_PIN  A4      // Pillow Pin
+#define MOTOR_PIN   8       // 
 
 /** Configurations values */
 #define NUM_PIXELS  17      // Number of pixels in strip
@@ -29,46 +44,78 @@
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_PIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
 
 void setup() {
-
-#if defined (__AVR_ATtiny85__)
-    if (F_CPU == 16000000) clock_prescale_set(clock_div_1);
-#endif
-    
+ 
+#if BUBBLES_ENABLED == 1
     /* Initialize the NeoPixel LED strip */
     strip.begin();
     for (int i = 0; i < strip.numPixels(); i++) {
         strip.setPixelColor(i, strip.Color(0, 0, 0));
     }
     strip.show();
+#endif    
 
+#if PILLOW_ENABLED == 1
+    /* Initialize the pillow */
+    pinMode(PILLOW_PIN, INPUT_PULLUP);
+#endif
+
+#if MOTOR_ENABLED == 1 
+    /* Initialize the motor */
+    pinMode(MOTOR_PIN, OUTPUT);
+    digitalWrite(MOTOR_PIN, LOW);
+#endif
+
+#if DEBUG == 1    
     Serial.begin(9600);
+#endif
 }
 
 void loop() {
       
+#if BUBBLES_ENABLED == 1
     /* Sample mic and get volt of peak2peak amplitude */
     int peak2Peak = samplePeak2PeakAmp(SAMP_WIN, MIC_PIN);
     double volts = (peak2Peak * 5.) / 1024;
-    
-#if (DEBUG == 1) 
-    Serial.println("Volts from peak2peakSample: "+ (String)volts);
-#endif       
+     
+    DEBUGPRINT(("Volts from peak2peakSample: "+ (String)volts));
 
     /* Increments when above thresh hold? */
     if (volts >= VTHRESH) {
-        incGradient(mapFloat(volts, VTHRESH, VTHRESH_MAX, 1.5, 3.0));
+        bool top = incGradient(mapFloat(volts, VTHRESH, VTHRESH_MAX, 1.5, 3.0));
+        
+    #if MOTOR_ENABLED == 1
+        if (!top) { digitalWrite(MOTOR_PIN, OUTPUT); } 
+    #endif   
     } else {
-        dimGradient();
+        bool bot = dimGradient();
+        
+    #if MOTOR_ENABLED == 1
+        if (!bot) { DEBUGPRNT(("WAVE!")); }
+    #endif
     }
-  
+    
     strip.show();
+#endif
+  
     delay(LOOP_DELAY);
 }
 
+/**
+ *  Wave (motor) Code 
+ */
+
+
+/**
+ *  Bubble Code
+ */
+
 /** dimGradient() - Gradually dims the leds of the strip one by one.
  */
-void dimGradient() { 
-    for (int i = strip.numPixels() - 1; i >= 0; i--) {
+bool dimGradient() {
+    int newValue = 0;
+    int i;
+     
+    for (i = strip.numPixels() - 1; i >= 0; i--) {
         uint32_t value = strip.getPixelColor(i) & 0xFF;
         
         if (value > 0) {
@@ -80,22 +127,25 @@ void dimGradient() {
             break;
         }
     }
+
+    return (newValue == 0 && i == 0);
 }
 
 
 /** incGradient() - Gradually increments the leds of the strip one by one.
  *  @acceleration:  Acceleration of dim
  */
-void incGradient(double acceleration) {
-#if (DEBUG == 1)
-    Serial.println("Acceleration: " + (String)acceleration);
-#endif
+bool incGradient(double acceleration) {
+    int newValue = 0;
+    int i;
 
-    for (int i = 0; i < strip.numPixels(); i++) {
+    DEBUGPRINT(("Acceleration: " + (String)acceleration));
+
+    for (i = 0; i < strip.numPixels(); i++) {
         uint32_t value = strip.getPixelColor(i) & 0xFF;
         
         if (value < 255) {
-            int newValue = (value + INC_VAL) * (int)acceleration;
+            newValue = (value + INC_VAL) * (int)acceleration;
             if (newValue > 255)
                 newValue = 255;
 
@@ -103,6 +153,8 @@ void incGradient(double acceleration) {
             break;
         }
     }
+
+    return (newValue == 255 && i == (NUM_PIXELS-1));
 }
 
 /** samplePeak2PeakAmp() - Calculates the peak to peak amplitude.
